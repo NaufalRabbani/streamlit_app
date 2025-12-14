@@ -5,3 +5,5 @@ joblib
 opencv-python-headless
 Pillow
 xgboost
+shap
+matplotlib
