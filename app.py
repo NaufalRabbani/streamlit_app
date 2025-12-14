@@ -30,11 +30,7 @@ xgb, scaler, pca = load_models()
 # =========================================================
 # LOAD SHAP EXPLAINER
 # =========================================================
-@st.cache_resource(show_spinner=False)
-def load_shap_explainer(model):
-    return shap.TreeExplainer(model)
-
-explainer = load_shap_explainer(xgb)
+explainer = shap.TreeExplainer(xgb)
 
 # =========================================================
 # UTILITY FUNCTIONS
