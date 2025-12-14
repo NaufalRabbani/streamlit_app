@@ -18,12 +18,13 @@ st.set_page_config(
 # =========================================================
 @st.cache_resource(show_spinner=False)
 def load_models():
-    svm = joblib.load("svm_model.pkl")
+    xgb = joblib.load("xgboost_model.pkl")
     scaler = joblib.load("scaler.pkl")
     pca = joblib.load("pca.pkl")
-    return svm, scaler, pca
+    return xgb, scaler, pca
 
-svm, scaler, pca = load_models()
+xgb, scaler, pca = load_models()
+
 
 # =========================================================
 # UTILITY FUNCTIONS
