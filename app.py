@@ -25,7 +25,6 @@ def load_models():
 
 xgb, scaler, pca = load_models()
 
-
 # =========================================================
 # UTILITY FUNCTIONS
 # =========================================================
@@ -69,8 +68,8 @@ def predict_histogram(hist):
     hist_scaled = scaler.transform(hist)
     hist_pca = pca.transform(hist_scaled)
 
-    pred = svm.predict(hist_pca)[0]
-    prob = svm.predict_proba(hist_pca)[0][1]
+    pred = xgb.predict(hist_pca)[0]
+    prob = xgb.predict_proba(hist_pca)[0][1]
 
     return pred, prob
 
@@ -95,8 +94,8 @@ st.write(
     - 📄 **File CSV histogram (256 fitur)**, atau
     - 🩻 **Gambar X-ray**
 
-    Menggunakan:
-    **Histogram → StandardScaler → PCA → SVM**
+    Pipeline:
+    **Histogram → StandardScaler → PCA → XGBoost**
     """
 )
 
@@ -188,7 +187,6 @@ if histogram is not None:
 
         st.metric("Probabilitas Electric Device", f"{prob*100:.2f}%")
         st.metric("Alert Level", f"{icon} {alert}")
-
         st.caption(desc)
 
         st.subheader("📈 Histogram Intensitas (Normalized)")
@@ -199,6 +197,6 @@ if histogram is not None:
 # =========================================================
 st.markdown("---")
 st.caption(
-    "Model: SVM | Histogram Intensitas X-ray | End-to-End Detection System"
+    "Model: XGBoost | Histogram Intensitas X-ray | End-to-End Detection System"
 )
 st.caption("Developed by NRSF")
