@@ -2,3 +2,5 @@ streamlit
 numpy
 scikit-learn
 joblib
+opencv-python-headless
+Pillow

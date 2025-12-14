@@ -1,109 +1,169 @@
 import streamlit as st
 import numpy as np
 import joblib
+import cv2
+from PIL import Image
 
-# =========================
-# LOAD MODEL & PREPROCESSOR
-# =========================
-@st.cache_resource
-def load_models():
-    svm_model = joblib.load("svm_model.pkl")
-    scaler = joblib.load("scaler.pkl")
-    pca = joblib.load("pca.pkl")
-    return svm_model, scaler, pca
-
-svm, scaler, pca = load_models()
-
-# =========================
-# UI STREAMLIT
-# =========================
+# =========================================================
+# CONFIG
+# =========================================================
 st.set_page_config(
-    page_title="Electric Device Detection",
+    page_title="Electric Device Detection (X-ray)",
     page_icon="⚡",
     layout="centered"
 )
 
-st.title("⚡ Electric Device Detection")
+# =========================================================
+# LOAD MODEL & PREPROCESSING (CACHE)
+# =========================================================
+@st.cache_resource(show_spinner=False)
+def load_models():
+    svm = joblib.load("svm_model.pkl")
+    scaler = joblib.load("scaler.pkl")
+    pca = joblib.load("pca.pkl")
+    return svm, scaler, pca
+
+svm, scaler, pca = load_models()
+
+# =========================================================
+# UTILITY FUNCTIONS
+# =========================================================
+def is_likely_xray(image):
+    """
+    Heuristic ringan untuk memberi peringatan
+    jika gambar kemungkinan bukan X-ray
+    """
+    img = np.array(image)
+
+    # Jika RGB, cek variasi channel warna
+    if len(img.shape) == 3:
+        std_r = np.std(img[:, :, 0])
+        std_g = np.std(img[:, :, 1])
+        std_b = np.std(img[:, :, 2])
+
+        # Perbedaan channel besar → kemungkinan foto biasa
+        if abs(std_r - std_g) > 15 or abs(std_r - std_b) > 15:
+            return False
+
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    # X-ray biasanya kontras sedang
+    if np.std(img) > 80:
+        return False
+
+    return True
+
+
+def image_to_histogram(image):
+    """
+    Konversi gambar → histogram 256 bin + auto-normalization
+    """
+    img = np.array(image)
+
+    # RGB → Grayscale
+    if len(img.shape) == 3:
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    # Resize agar konsisten & cepat
+    img = cv2.resize(img, (256, 256))
+
+    # Histogram 256 bin
+    hist = cv2.calcHist([img], [0], None, [256], [0, 256])
+    hist = hist.flatten()
+
+    # AUTO-NORMALIZATION (L1)
+    if hist.sum() > 0:
+        hist = hist / hist.sum()
+
+    return hist
+
+
+def predict_histogram(hist):
+    """
+    Pipeline prediksi lengkap
+    """
+    hist = hist.reshape(1, -1)
+    hist_scaled = scaler.transform(hist)
+    hist_pca = pca.transform(hist_scaled)
+
+    pred = svm.predict(hist_pca)[0]
+    prob = svm.predict_proba(hist_pca)[0][1]
+
+    return pred, prob
+
+
+# =========================================================
+# UI
+# =========================================================
+st.title("⚡ Electric Device Detection from X-ray Image")
+
 st.write(
     """
     Aplikasi ini mendeteksi **keberadaan perangkat listrik**
-    berdasarkan **histogram intensitas X-ray (256 fitur)**  
-    menggunakan **model Support Vector Machine (SVM)**.
+    dari **citra X-ray** menggunakan:
+    - Histogram intensitas (256 bin)
+    - StandardScaler + PCA
+    - **Support Vector Machine (SVM)**
+
+    Sistem ini merupakan **simulasi end-to-end**
+    dari proses deteksi perangkat listrik berbasis X-ray.
     """
 )
 
-# =========================
-# INPUT DATA
-# =========================
-st.subheader("📥 Input Histogram")
+st.markdown("---")
 
-input_method = st.radio(
-    "Pilih metode input:",
-    ["Upload File (.csv)", "Input Manual"]
+# =========================================================
+# INPUT IMAGE
+# =========================================================
+uploaded_image = st.file_uploader(
+    "📤 Upload gambar X-ray (PNG / JPG / JPEG)",
+    type=["png", "jpg", "jpeg"]
 )
 
-if input_method == "Upload File (.csv)":
-    uploaded_file = st.file_uploader(
-        "Upload file CSV berisi 256 kolom histogram",
-        type=["csv"]
-    )
+if uploaded_image is not None:
+    image = Image.open(uploaded_image)
 
-    if uploaded_file is not None:
-        data = np.loadtxt(uploaded_file, delimiter=",")
-        if data.shape[0] != 256:
-            st.error("❌ File harus berisi tepat 256 nilai!")
-            st.stop()
-        input_data = data.reshape(1, -1)
+    # Resize awal agar ringan di Cloud
+    image = image.resize((512, 512))
 
-elif input_method == "Input Manual":
-    st.write("Masukkan 256 nilai histogram (dipisahkan dengan koma):")
-    user_input = st.text_area("Contoh: 0, 1, 5, 10, ...")
+    st.image(image, caption="Gambar X-ray yang diunggah", use_column_width=True)
 
-    if user_input:
-        try:
-            values = np.array([float(x) for x in user_input.split(",")])
-            if len(values) != 256:
-                st.error("❌ Harus tepat 256 nilai!")
-                st.stop()
-            input_data = values.reshape(1, -1)
-        except:
-            st.error("❌ Format input tidak valid")
-            st.stop()
+    # Validasi X-ray
+    if not is_likely_xray(image):
+        st.warning(
+            "⚠️ Gambar yang diunggah kemungkinan **BUKAN citra X-ray**. "
+            "Hasil prediksi mungkin tidak valid."
+        )
 
-# =========================
-# PREDIKSI
-# =========================
-if "input_data" in locals():
+    # Konversi ke histogram
+    histogram = image_to_histogram(image)
+
     if st.button("🔍 Prediksi"):
-        # Preprocessing
-        input_scaled = scaler.transform(input_data)
-        input_pca = pca.transform(input_scaled)
+        with st.spinner("Memproses dan melakukan prediksi..."):
+            prediction, probability = predict_histogram(histogram)
 
-        # Prediction
-        prediction = svm.predict(input_pca)[0]
-        probability = svm.predict_proba(input_pca)[0][1]
-
-        # Output
+        st.markdown("---")
         st.subheader("📊 Hasil Prediksi")
 
         if prediction == 1:
-            st.error("⚠️ PERANGKAT LISTRIK TERDETEKSI")
+            st.error("⚠️ **PERANGKAT LISTRIK TERDETEKSI**")
         else:
-            st.success("✅ TIDAK TERDETEKSI PERANGKAT LISTRIK")
+            st.success("✅ **TIDAK TERDETEKSI PERANGKAT LISTRIK**")
 
         st.metric(
             label="Probabilitas Electric Device",
-            value=f"{probability*100:.2f}%"
+            value=f"{probability * 100:.2f}%"
         )
 
         # Visualisasi histogram
-        st.subheader("📈 Histogram Input")
-        st.line_chart(input_data.flatten())
+        st.subheader("📈 Histogram Intensitas (Normalized)")
+        st.line_chart(histogram)
 
-# =========================
+# =========================================================
 # FOOTER
-# =========================
+# =========================================================
 st.markdown("---")
 st.caption(
-    "Model: SVM | Dataset: ElectricDeviceDetection (X-ray 3D Histogram)"
+    "Model: SVM | Representasi: Histogram Intensitas X-ray | Deployment: Streamlit"
 )
+st.caption("Developed by NRSF")
