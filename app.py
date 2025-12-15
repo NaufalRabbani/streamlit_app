@@ -59,8 +59,11 @@ def image_to_histogram(image):
 
     img = cv2.resize(img, (256, 256))
 
-    hist = cv2.calcHist([img], [0], None, [256], [0, 256]).flatten()
+    # === TAMBAHAN PENTING ===
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    img = clahe.apply(img)
 
+    hist = cv2.calcHist([img], [0], None, [256], [0, 256]).flatten()
     return hist / hist.sum() if hist.sum() > 0 else hist
 
 
